@@ -63,18 +63,20 @@ ESXi-7.0U3sd-19482531-ESIR-NVME-USBNIC-IGCNIC-4G-0501.iso:
 6. 开始配置：`cd openwrt && make menuconfig` (* 表示将打包到镜像中):
 
    1. cpu 架构，我这里保持 x86_64；
-   2. luci: application 配置插件，theme 配置主题
+   2. luci: application 配置插件
       1. luci-app-adbyby-plus 广告屏蔽大师 Plus+
-      1. luci-app-aliyundrive-webdav
-      2. luci-app-argon-config
-      2. luci-app-firewall 防火墙和端口转发
-      3. luci-app-serverchan
-      4. 取消 luci-app-ssr-plus 选择 luci-app-vssr
-      5. luci-app-ttyd
-      6. 取消 luci-app-zerotier
-   3. ipv6 扩展：Extra packages -> 选中 ipv6helper
+      2. luci-app-aliyundrive-webdav
+      3. luci-app-argonne-config 主题设置
+      4. luci-app-firewall 防火墙和端口转发
+      5. 取消 luci-app-ssr-plus
+      6. luci-app-ttyd
+      7. luci-app-vssr
+      8. 取消 luci-app-zerotier
+   3. luci: Themes 配置主题:
+      1. luci-theme-argonne 与 luci-app-argonne-config 搭配
+   4. ipv6 扩展：Extra packages -> 选中 ipv6helper
 
-7. 配置结束后，把配置上传到网盘:
+7. 配置结束后（如果无法配置，可在本地 docker 安装基本依赖进行配置操作见附），把配置上传到网盘:
 
    1. ```bash
       # 安装 cli 工具
@@ -100,6 +102,34 @@ ESXi-7.0U3sd-19482531-ESIR-NVME-USBNIC-IGCNIC-4G-0501.iso:
     5. *\*-squashfs-rootfs.img*: 不带引导的固件，需要单独设置 grub/syslinux 来进行引导
 
     6. >[squashfs 说明](https://openwrt.org/docs/techref/filesystems): 一种只读的文件系统，每次修改: *actually a copy of it is being copied to the second (JFFS2) partition*
+
+#### docker lede 基本环境
+
+```bash
+############ make lede config ############
+# docker exec -it ubt bash
+
+# container
+cd ~
+HTTP_PROXY='localhost:10809';HTTPS_PROXY='localhost:10809'
+
+apt install -y git vim curl wget
+apt install -y python3 python3-distutils file build-essential rsync unzip subversion libncurses5-dev zlib1g-dev gawk gcc-multilib flex git-core gettext libssl-dev  
+
+git clone https://github.com/coolsnowwolf/lede openwrt
+cd openwrt
+
+sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
+
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+make menuconfig
+
+# copy config to host
+# docker cp ubt:/root/openwrt/.config ./
+```
 
 
 
@@ -178,3 +208,73 @@ esxi 虚拟机开机自启:
 2. `passwd` 修改密码
 
 3. `reboot` 重启
+
+## 3. ipv6 设置
+
+> ipv6 地址段说明:
+>
+> - `2000::/3`: 全球单播，即公网地址
+>   - `240e::/18`: 电信
+>   - `2408:8000::/20`: 联通
+>   - `2409:8000::/20`: 移动
+> - `fc::/7`: 局域网
+> - `fe80::/10`: 链路本地，必须有该地址，自动生成
+> - `::1/128`: 本地回环
+
+wan:
+
+- 高级设置: 内置的 IPV6 管理 -> 勾选；获取IPv6 -> 自动
+
+lan:
+
+- 基本设置: IPv6 分配长度 >= 运营商，一般都可以取 64
+- 高级设置: 内置的 IPV6 管理 -> 不勾选
+- 下方IPv6设置: 路由通告 -> 服务器模式；DHCPv6服务 -> 服务器模式；NDP代理 -> 禁用；DHCPv6 模式 -> 无 + 有
+
+全局网络选项:
+
+- IPv6 ULA 前缀清空
+
+DHCP/DNS:
+
+- 高级设置: 禁止解析 IPv6 DNS 记录 -> 不勾选
+
+### 防火墙
+
+只允许特定 ip 和端口
+
+基本设置:
+
+- 基本设置: 转发 -> 拒绝
+- 区域: wan 下的入站, 转发 为拒绝
+
+#### 方式一: 通信规则
+
+打开路由器端口下点击添加:
+
+- 限制地址 -> 仅 IPv6
+- 源区域 -> wan
+- 源xxx 保持所有
+- 目标区域 -> lan
+- 目标地址 -> `::1:2:3:4/::ffff:ffff:ffff:ffff` 注: 选择重启不变的后几部分, 我这里是后四部分，斜杠后的 ffff 个数与前面一致
+- 目标端口 -> `80 443 8000-9999` 注: 多个端口使用空格
+- 动作 -> 接受
+
+#### 方式二: 自定义规则
+
+使用命令的方式配置，方便快速添加和编辑。
+
+末尾输入:
+
+```bash
+# my pc
+ip6tables -t filter -A zone_wan_forward -p tcp -d ::1:2:3:4/::ffff:ffff:ffff:ffff -m multiport --dports 80,443,8000:9999 -m comment --comment "ipv6-firewall" -j zone_lan_dest_ACCEPT
+ip6tables -t filter -A zone_wan_forward -p udp -d ::1:2:3:4/::ffff:ffff:ffff:ffff -m multiport --dports 80,443,8000:9999 -m comment --comment "ipv6-firewall" -j zone_lan_dest_ACCEPT
+```
+
+上面命令其实是从方式一界面设置导出的命令，导出步骤:
+
+- 查看 ipv6 防火墙规则列表: `ip6tables -nL --line-numbers`
+- 将 ipv6 防火墙规则显示成命令: `fw3 -6 print`
+- 仅仅目的端口不同可以合并为一条，例如: `-m multiport --dports `
+
