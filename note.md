@@ -68,10 +68,16 @@ ESXi-7.0U3sd-19482531-ESIR-NVME-USBNIC-IGCNIC-4G-0501.iso:
       2. luci-app-aliyundrive-webdav
       3. luci-app-argonne-config 主题设置
       4. luci-app-firewall 防火墙和端口转发
-      5. 取消 luci-app-ssr-plus
-      6. luci-app-ttyd
-      7. luci-app-vssr
-      8. 取消 luci-app-zerotier
+      5. luci-app-nlbwmon 网络带宽
+      6. 取消 luci-app-ipsec-vpnd
+      7. luci-app-serverchan 消息推送
+      8. 取消 luci-app-ssr-plus
+      9. 取消 luci-app-vlmcsd
+      10. 取消 luci-app-vsftpd
+      11. luci-app-ttyd
+      12. luci-app-vssr
+      13. 取消 luci-app-xlnetacc 迅雷快鸟
+      14. 取消 luci-app-zerotier
    3. luci: Themes 配置主题:
       1. luci-theme-argonne 与 luci-app-argonne-config 搭配
    4. ipv6 扩展：Extra packages -> 选中 ipv6helper
